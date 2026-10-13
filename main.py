@@ -1,7 +1,23 @@
-from deep_translator import GoogleTranslator
+import time
+from deep_translator import MyMemoryTranslator
 
-text = input("Enter English text: ")
+print("Translator is running. Type 'exit' to quit.")
 
-translation = GoogleTranslator(source="en", target="ta").translate(text)
-
-print("Tamil Translation:", translation)
+while True:
+    text = input("\nEnter English text: ")
+    
+    if text.lower() == 'exit':
+        break
+        
+    try:
+        # Added a small delay to respect API rate limits
+        time.sleep(1)
+        translated = MyMemoryTranslator(source='en-US', target='ta-IN').translate(text)
+        
+        if translated:
+            print("Tamil Translation:", translated)
+        else:
+            print("Translation failed: Received empty response from server.")
+            
+    except Exception as e:
+        print("Translation failed:", e)
