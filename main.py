@@ -9,15 +9,55 @@ from gtts import gTTS
 
 # ── Translation ──────────────────────────────────────────────────────────────
 
+_GOOGLE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120"
+}
+
+def _google_translate(client: str, text: str) -> str:
+    """Call Google's internal translate endpoint with a given client param."""
+    r = requests.get(
+        "https://translate.googleapis.com/translate_a/single",
+        params={"client": client, "sl": "en", "tl": "ta", "dt": "t", "q": text},
+        headers=_GOOGLE_HEADERS,
+        timeout=10,
+    )
+    r.raise_for_status()
+    data = r.json()
+    result = "".join(seg[0] for seg in data[0] if seg and seg[0])
+    if not result:
+        raise ValueError("Empty response")
+    return result
+
+def _mymemory_translate(text: str) -> str:
+    """MyMemory free API — no key needed."""
+    r = requests.get(
+        "https://api.mymemory.translated.net/get",
+        params={"q": text, "langpair": "en|ta"},
+        timeout=10,
+    )
+    r.raise_for_status()
+    data = r.json()
+    result = data["responseData"]["translatedText"]
+    if not result or result.upper().startswith("QUERY LENGTH") or data.get("responseStatus") != 200:
+        raise ValueError(f"MyMemory error: {result}")
+    # Reject romanized responses (valid Tamil contains Tamil unicode chars)
+    if result and not any('\u0B80' <= c <= '\u0BFF' for c in result):
+        raise ValueError("Got romanized text, not Tamil script")
+    return result
+
 def translate_to_tamil(text: str) -> str:
-    """Translate English → Tamil using Google's internal API (no key, no 429)."""
-    url = "https://translate.googleapis.com/translate_a/single"
-    params = {"client": "gtx", "sl": "en", "tl": "ta", "dt": "t", "q": text}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, params=params, headers=headers, timeout=10)
-    response.raise_for_status()
-    data = response.json()
-    return "".join(seg[0] for seg in data[0] if seg and seg[0])
+    """Try 3 different free APIs in order until one works."""
+    errors = []
+    for strategy in [
+        lambda: _google_translate("dict-chrome-ex", text),
+        lambda: _google_translate("gtx", text),
+        lambda: _mymemory_translate(text),
+    ]:
+        try:
+            return strategy()
+        except Exception as e:
+            errors.append(str(e))
+    raise RuntimeError(f"All translation APIs failed: {errors}")
 
 # ── Voice Input ───────────────────────────────────────────────────────────────
 
